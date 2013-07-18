@@ -1,5 +1,6 @@
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
+from django.core.exceptions import PermissionDenied
 from django.core.files.temp import NamedTemporaryFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import transaction
@@ -53,6 +54,8 @@ def connect_user(request, access_token=None, facebook_graph=None):
 
     connect_facebook = to_bool(request.REQUEST.get('connect_facebook'))
 
+    backend = get_registration_backend()
+
     logger.debug('force registration is set to %s', force_registration)
     if connect_facebook and request.user.is_authenticated() and not force_registration:
         # we should only allow connect if users indicate they really want to connect
@@ -60,6 +63,8 @@ def connect_user(request, access_token=None, facebook_graph=None):
         # if this isn't present we just do a login
         action = CONNECT_ACTIONS.CONNECT
         user = _connect_user(request, converter)
+        if backend.is_user_banned(user):
+            raise PermissionDenied()
     else:
         email = facebook_data.get('email', False)
         email_verified = facebook_data.get('verified', False)
@@ -67,6 +72,8 @@ def connect_user(request, access_token=None, facebook_graph=None):
         if email and email_verified:
             kwargs = {'facebook_email': email}
         auth_user = authenticate(facebook_id=facebook_data['id'], **kwargs)
+        if backend.is_user_banned(auth_user):
+            raise PermissionDenied()
         if auth_user and not force_registration:
             action = CONNECT_ACTIONS.LOGIN
 
